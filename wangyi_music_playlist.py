@@ -48,7 +48,7 @@ while 1:
         count = 0
         for title, play_count, href in parse(response_body):
             count += 1
-            sys.stdout.write('%s\t%d\t%s\n' % (title, play_count, href))
+            sys.stdout.write('%s\t%d\t%s\n' % (title.encode('utf-8'), play_count, href))
             sys.stdout.flush()
         offset += 35
         time.sleep(1)
