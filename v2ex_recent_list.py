@@ -70,6 +70,9 @@ def download(url):
             return content
         except:
             time.sleep(3)
+        finally:
+            if response:
+                response.close()
     return None
 
 

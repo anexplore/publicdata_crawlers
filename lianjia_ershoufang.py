@@ -63,7 +63,10 @@ def download(url, headers):
             return None
         return response.read().decode('utf-8')
     except Exception as e:
-        sys.stderr.write(str(e) + '\n')        
+        sys.stderr.write(str(e) + '\n')
+    finally:
+        if response:
+            response.close()
     return None
 
 
