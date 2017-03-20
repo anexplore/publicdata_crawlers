@@ -177,7 +177,6 @@ def download(url, headers=None, cookies=None, encoding='UTF-8', timeout=20, retr
             response = requests.get(url, headers=headers, cookies=cookies, timeout=timeout)
             if response.status_code == 200:
                 response.encoding = encoding
-                print response.text
                 return response.text
         except requests.exceptions.Timeout as timeout:
             continue
