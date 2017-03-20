@@ -4,6 +4,8 @@
 @author caoliuyi
 """
 import json
+import random
+import redis
 import re
 import time
 
@@ -65,10 +67,105 @@ class House(object):
         self.description = ''
 
 
-def download(url, headers=None, encoding='UTF-8', timeout=20, retry_count=3):
+class RedisWriter(object):
+    """数据写出
+    非线程安全
+    """
+    TIME_LINE_KEY = "house_timeline"
+    HOUSE_PRICE_KEY = "price"
+
+    def __init__(self, redis_host, redis_port):
+        self.redis_host = redis_host
+        self.redis_port = redis_port
+        self.stop = False
+        self.redis = None
+
+    def _connect_util_stop(self):
+        if self.redis:
+            try:
+                self.redis.shutdown()
+            except:
+                pass
+        while not self.stop and not self._connect_to_redis():
+            time.sleep(1)
+
+    def _connect_to_redis(self):
+        """连接到Redis
+        :return: True 如果成功 否则 False
+        """
+        self.redis = redis.StrictRedis(self.redis_host, self.redis_port)
+        try:
+            self.redis.ping()
+            return True
+        except:
+            self.redis = None
+            return False
+
+    def close(self):
+        self.stop = True
+        try:
+            self.redis = None
+        except:
+            pass
+
+    def clear_timeline(self):
+        """清除redis中保持的最新房源列表
+        """
+        if not self.redis:
+            self._connect_util_stop()
+        try:
+            self.redis.delete(RedisWriter.TIME_LINE_KEY)
+        except redis.RedisError as error:
+            # just reconnect
+            self._connect_to_redis()
+
+    def add_to_timeline(self, house_code):
+        """将房屋编号添加到队列中
+        :param house_code: 房屋编码
+        """
+        if not house_code:
+            return
+        if not self.redis:
+            self._connect_to_redis()
+        try:
+            self.redis.rpush(RedisWriter.TIME_LINE_KEY, house_code)
+        except redis.RedisError as error:
+            self._connect_to_redis()
+
+    def write(self, house, append_to_timeline=True):
+        """将房屋信息写入到redis中
+        :param house: 房屋object
+        :param append_to_timeline: 是否添加到timeline中
+        """
+        if not house:
+            return
+        if not self.redis:
+            self._connect_to_redis()
+        values = {}
+        values['house_code'] = house.house_code
+        values['price'] = house.price
+        values['unit_price'] = house.unit_price
+        values['title'] = house.title
+        values['description'] = house.description
+        values['tags'] = '' if house.color_tags else ','.join(house.color_tags)
+        values['cover_pic'] = house.cover_pic
+        values['house_home_page'] = house.house_home_page
+        try:
+            if append_to_timeline:
+                self.add_to_timeline(house.house_code)
+            self.redis.hmset(house.house_code, values)
+            self.redis.set('%s:%s:%s' % (RedisWriter.HOUSE_PRICE_KEY, house.house_code,
+                                         time.strftime('%Y%m%d', time.localtime())),
+                           house.price)
+        except redis.RedisError as error:
+            self._connect_to_redis()
+
+
+def download(url, headers=None, cookies=None, encoding='UTF-8', timeout=20, retry_count=3):
     """下载
     :param url: 请求地址
     :param headers: http头
+    :param cookies: cookie
     :param encoding: 网页编码
     :param timeout: 超时时间
     :param retry_count: 重试次数
@@ -77,9 +174,10 @@ def download(url, headers=None, encoding='UTF-8', timeout=20, retry_count=3):
     response = None
     for retry in xrange(retry_count):
         try:
-            response = requests.get(url, headers=headers, timeout=timeout)
+            response = requests.get(url, headers=headers, cookies=cookies, timeout=timeout)
             if response.status_code == 200:
                 response.encoding = encoding
+                print response.text
                 return response.text
         except requests.exceptions.Timeout as timeout:
             continue
@@ -98,7 +196,7 @@ def next_page_builder(max_page=100):
         yield 'https://m.lianjia.com/bj/ershoufang/pg%d/?_t=1' % i
 
 
-def request(url):
+def request(url, cookies=None):
     """请求网页内容
     :param url: 链家网页地址
     :return: 网页内容
@@ -107,7 +205,7 @@ def request(url):
     headers[MOBILE_USER_AGENT[0]] = MOBILE_USER_AGENT[1]
     headers[X_REQUEST_WITH[0]] = X_REQUEST_WITH[1]
     headers['Referer'] = url
-    response = download(url, headers=headers, timeout=30, retry_count=5)
+    response = download(url, headers=headers, cookies=cookies, timeout=30, retry_count=5)
     if not response:
         return None
     try:
@@ -194,9 +292,37 @@ def parse(html_content):
         house.description = desc
         yield house
 
-for url in next_page_builder(20):
-    for house in parse(request(url)):
-        if not house:
-            break
-        print '%s\t%s\t%d\t%s' % (house.house_code, house.title, house.price, house.house_home_page)
 
+def get_cookie():
+    """获取首页Cookie
+    :return: Cookie dict
+    """
+    for i in xrange(3):
+        try:
+            response = requests.get('https://m.lianjia.com/bj/ershoufang/', timeout=30)
+            cookies = {}
+            for k, v in response.cookies.iteritems():
+                cookies[k] = v
+            return cookies
+        except:
+            pass
+
+
+rand = random.Random()
+rand.seed(time.localtime())
+
+while 1:
+    writer = RedisWriter('redishost', 6379)
+    writer.clear_timeline()
+    cookie = get_cookie()
+    print cookie
+    for url in next_page_builder(100):
+        print 'process:%s' % url
+        for house in parse(request(url, cookie)):
+            if not house:
+                break
+            writer.write(house, True)
+            print '%s\t%s\t%d\t%s' % (house.house_code, house.title, house.price, house.house_home_page)
+        time.sleep(5 + rand.randint(2, 8))
+    writer.close()
+    time.sleep(7200)
