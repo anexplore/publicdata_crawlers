@@ -322,6 +322,7 @@ while 1:
                 break
             writer.write(house, True)
             print '%s\t%s\t%d\t%s' % (house.house_code, house.title, house.price, house.house_home_page)
-        time.sleep(5 + rand.randint(2, 8))
+            # 抓快了链家会让输图片验证码 这里5s还是快，建议30s或者使用代理
+            time.sleep(5 + rand.randint(2, 8))
     writer.close()
     time.sleep(7200)
