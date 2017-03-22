@@ -7,6 +7,7 @@ import json
 import random
 import redis
 import re
+import sys
 import time
 
 import lxml
@@ -307,22 +308,27 @@ def get_cookie():
             pass
 
 
-rand = random.Random()
-rand.seed(time.localtime())
+def main(args):
+    rand = random.Random()
+    rand.seed(time.localtime())
 
-while 1:
-    writer = RedisWriter('redishost', 6379)
-    writer.clear_timeline()
-    cookie = get_cookie()
-    print cookie
-    for url in next_page_builder(100):
-        print 'process:%s' % url
-        for house in parse(request(url, cookie)):
-            if not house:
-                break
-            writer.write(house, True)
-            print '%s\t%s\t%d\t%s' % (house.house_code, house.title, house.price, house.house_home_page)
-            # 抓快了链家会让输图片验证码 这里5s还是快，建议30s或者使用代理
-            time.sleep(5 + rand.randint(2, 8))
-    writer.close()
-    time.sleep(7200)
+    while 1:
+        writer = RedisWriter('redishost', 6379)
+        writer.clear_timeline()
+        cookie = get_cookie()
+        print cookie
+        for url in next_page_builder(100):
+            print 'process:%s' % url
+            for house in parse(request(url, cookie)):
+                if not house:
+                    break
+                writer.write(house, True)
+                print '%s\t%s\t%d\t%s' % (house.house_code, house.title, house.price, house.house_home_page)
+                # 抓快了链家会让输图片验证码 这里5s还是快，建议30s或者使用代理
+                time.sleep(5 + rand.randint(2, 8))
+        writer.close()
+        time.sleep(7200)
+
+
+if __name__ == '__main__':
+    main(sys.argv)
