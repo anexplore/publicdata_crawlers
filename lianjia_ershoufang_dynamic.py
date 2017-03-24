@@ -3,6 +3,7 @@
 爬取链家二手房简要信息
 @author caoliuyi
 """
+import datetime
 import json
 import random
 import redis
@@ -66,6 +67,84 @@ class House(object):
         self.se_ctime = 0
         # 描述
         self.description = ''
+
+
+class RedisReader(object):
+    """从redis中读取数据
+    非线程安全
+    """
+    TIME_LINE_KEY = "house_timeline"
+    HOUSE_PRICE_KEY = "price"
+
+    def __init__(self, redis_host, redis_port):
+        self.redis_host = redis_host
+        self.redis_port = redis_port
+        self.redis = None
+
+    def connect_to_redis(self):
+        """连接到Redis
+        :return: True如果成功 否则 False
+        """
+        self.redis = redis.StrictRedis(self.redis_host, self.redis_port)
+        try:
+            self.redis.ping()
+            return True
+        except:
+            self.redis = None
+            return False
+
+    def read(self, house_code):
+        """从redis中读取house信息
+        :param house_code: 房屋id
+        :return: house 如果不存在为None
+        """
+        if not house_code:
+            return None
+        house_pros = self.redis.hgetall(house_code)
+        if not house_pros:
+            return None
+        house = House()
+        house.house_code = house_code
+        house.price = house_pros.get('price', 0)
+        house.unit_price = house_pros.get('unit_price', 0)
+        house.title = house_pros.get('title', '')
+        house.tags = house_pros.get('tags', '').split(',')
+        house.description = house_pros.get('description', '')
+        house.cover_pic = house_pros.get('cover_pic', '')
+        house.house_home_page = house_pros.get('house_home_page', '')
+        return house
+
+    def read_house_price(self, house_code, date):
+        """读取房价
+        :param house_code: 房屋编号
+        :param date: 日期 datetime.date
+        :return: 房价
+        """
+        if not house_code or not isinstance(date, datetime.date):
+            return 0
+        price = self.redis.get('%s:%s:%s' % (RedisReader.HOUSE_PRICE_KEY, house_code, date.strftime('%Y%m%d')))
+        if price:
+            return float(price)
+        else:
+            return 0
+
+    def read_house_price_history(self, house_code, start_date, end_date):
+        """读取房价历史
+        :param: start_date: 开始日期
+        :param: end_date:结束日期
+        :param: house_code: 房屋编码
+        :return: [(date, price),]
+        """
+        if not isinstance(start_date, datetime.date) or not isinstance(end_date, datetime.date)\
+                or end_date < start_date:
+            return None
+        oneday = datetime.timedelta(days=1)
+        prices = []
+        while start_date <= end_date:
+            p = self.read_house_price(house_code, start_date)
+            prices.append((start_date.strftime('%Y%m%d'), p))
+            start_date += oneday
+        return prices
 
 
 class RedisWriter(object):
