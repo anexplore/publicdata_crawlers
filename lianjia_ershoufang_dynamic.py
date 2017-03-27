@@ -85,7 +85,8 @@ class RedisReader(object):
         """连接到Redis
         :return: True如果成功 否则 False
         """
-        self.redis = redis.StrictRedis(self.redis_host, self.redis_port)
+        self.redis = redis.StrictRedis(self.redis_host, self.redis_port,
+                                       socket_timeout=30)
         try:
             self.redis.ping()
             return True
@@ -173,7 +174,8 @@ class RedisWriter(object):
         """连接到Redis
         :return: True 如果成功 否则 False
         """
-        self.redis = redis.StrictRedis(self.redis_host, self.redis_port)
+        self.redis = redis.StrictRedis(self.redis_host, self.redis_port,
+                                       socket_timeout=30)
         try:
             self.redis.ping()
             return True
