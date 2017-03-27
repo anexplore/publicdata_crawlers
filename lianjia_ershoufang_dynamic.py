@@ -163,7 +163,7 @@ class RedisWriter(object):
     def _connect_util_stop(self):
         if self.redis:
             try:
-                self.redis.shutdown()
+                self.redis = None
             except:
                 pass
         while not self.stop and not self._connect_to_redis():
